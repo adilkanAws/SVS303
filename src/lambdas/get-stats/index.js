@@ -1,5 +1,5 @@
 const { DynamoDBClient, GetItemCommand, ScanCommand } = require("@aws-sdk/client-dynamodb");
-const { marshall } = require("@aws-sdk/util-dynamodb");
+const { marshall, unmarshall } = require("@aws-sdk/util-dynamodb");
 
 const dynamodbClient = new DynamoDBClient({});
 
@@ -9,9 +9,20 @@ exports.handler = async event => {
   const input = {
     TableName: process.env.TABLE_NAME,
   }
-  const command = new ScanCommand(input);
-  const { Items, LastEvaluatedKey } = await client.send(command);
+  let lastEvaluatedKey;
+  do {
+    const command = new ScanCommand(input);
+    const { Items, LastEvaluatedKey } = await client.send(command);
+    lastEvaluatedKey = LastEvaluatedKey;
+    const p = Items.map(item => {
+      const { status } = unmarshall(item);
+      const input = {
+        TableName: process.env.TABLE_NAME,
+      }
+    })
+  } while (lastEvaluatedKey);
+  
   return {
-    Items, LastEvaluatedKey
+    
   };
 };
