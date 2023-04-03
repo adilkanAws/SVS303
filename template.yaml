@@ -1,0 +1,511 @@
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  LettresAuPereNoel:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: 'N'
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  readLetter:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: readLetter
+      CodeUri: src/lambdas/read-letter
+      Handler: index.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref LettresAuPereNoel
+          TABLE_ARN: !GetAtt LettresAuPereNoel.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LettresAuPereNoel
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: s3:GetObject*
+              Resource: !Sub arn:aws:s3:::${AWS::StackName}-lettres-${AWS::AccountId}*
+      Events:
+        LettersQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt LettersQueue.Arn
+            BatchSize: 1
+  readLetterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${readLetter}
+  lettres:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-lettres-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+      PublicAccessBlockConfiguration:
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt LettersQueue.Arn
+          - Event: s3:ObjectRemoved:*
+            Queue: !GetAtt LettersQueue.Arn
+    DependsOn:
+      - lettresToLettersQueuePermission
+  lettresBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref lettres
+      PolicyDocument:
+        Id: RequireEncryptionInTransit
+        Version: '2012-10-17'
+        Statement:
+          - Principal: '*'
+            Action: '*'
+            Effect: Deny
+            Resource:
+              - !GetAtt lettres.Arn
+              - !Sub ${lettres.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+  Toys:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: 'N'
+        - AttributeName: toy
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: toy
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  qualityControl:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: qualityControl
+      CodeUri: src/lambdas/control-quality
+      Handler: index.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Events:
+        Toys:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt Toys.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 1
+      Environment:
+        Variables:
+          QUEUE_NAME: !GetAtt ToysRejected.QueueName
+          QUEUE_ARN: !GetAtt ToysRejected.Arn
+          QUEUE_URL: !Ref ToysRejected
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ToysRejected.QueueName
+  qualityControlLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${qualityControl}
+  MakeToys:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: MakeToys
+      CodeUri: src/lambdas/make-toys
+      Handler: index.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Events:
+        LettresAuPereNoel:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt LettresAuPereNoel.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 1
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Toys
+          TABLE_ARN: !GetAtt Toys.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Toys
+  MakeToysLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${MakeToys}
+  LettersQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DLQ.Arn
+        maxReceiveCount: 5
+  lettresToLettersQueuePermission:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt LettersQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:s3:::${AWS::StackName}-lettres-${AWS::AccountId}
+      Queues:
+        - !Ref LettersQueue
+  DLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+  ToysRejected:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ToysRejectedDlq.Arn
+        maxReceiveCount: 5
+  ToysRejectedDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+  RemakeToy:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: RemakeToy
+      CodeUri: src/lambdas/remake-toy
+      Handler: index.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Events:
+        ToysRejected:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ToysRejected.Arn
+            BatchSize: 1
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Toys
+          TABLE_ARN: !GetAtt Toys.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Toys
+  RemakeToyLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${RemakeToy}
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${AWS::StackName}
+        - ResourceName: Api
+      StageName: Prod
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /kids/status:
+            post:
+              x-amazon-apigateway-integration:
+                credentials: !GetAtt ApiKidsStatussendmessageRole.Arn
+                httpMethod: POST
+                type: aws
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:sqs:path/${AWS::AccountId}/${KidsStatus.QueueName}
+                requestParameters:
+                  integration.request.header.Content-Type: '''application/x-www-form-urlencoded'''
+                requestTemplates:
+                  application/json: Action=SendMessage&MessageBody={"data":$input.body}
+                responses:
+                  default:
+                    statusCode: 200
+              responses:
+                '200':
+                  description: 200 response
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Auth:
+        Authorizers:
+          cognito:
+            UserPoolArn: !GetAtt ParentUserPoolClient.Arn
+        DefaultAuthorizer: cognito
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref ParentUserPoolClient
+  KidsStatus:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt KidsStatusDLQ.Arn
+        maxReceiveCount: 5
+  ApiKidsStatussendmessageRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action: sqs:SendMessage
+                Effect: Allow
+                Resource: !GetAtt KidsStatus.Arn
+            Version: '2012-10-17'
+          PolicyName: ApiQueuesendmessagePolicy
+  KidsStatusDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 345600
+  kidsStatus:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: 'N'
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  ParentUserPoolClient:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AliasAttributes:
+        - email
+        - preferred_username
+      UserPoolName: !Sub ${AWS::StackName}-ParentUserPoolClient
+  saveParentsVote:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: saveParentsVote
+      CodeUri: src/lambdas/parents-vote
+      Handler: index.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Events:
+        KidsStatus:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt KidsStatus.Arn
+            BatchSize: 1
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref kidsStatus
+          TABLE_ARN: !GetAtt kidsStatus.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref kidsStatus
+      Architectures:
+        - arm64
+  saveParentsVoteLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${saveParentsVote}
+  Schedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      ScheduleExpression: rate(1 day)
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref StateMachine
+        RoleArn: !GetAtt ScheduleToStateMachineRole.Arn
+  StateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Definition:
+        StartAt: Start
+        States:
+          Start:
+            Type: Pass
+            Next: TaskState
+          TaskState:
+            Type: Task
+            Next: Done
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: ${calculateStatsArn}
+              Payload.$: $
+          Done:
+            Type: Pass
+            End: true
+      Logging:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
+      Policies:
+        - AWSXrayWriteOnlyAccess
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: '*'
+        - LambdaInvokePolicy:
+            FunctionName: !Ref calculateStats
+      Tracing:
+        Enabled: true
+      Type: STANDARD
+      DefinitionSubstitutions:
+        calculateStatsArn: !GetAtt calculateStats.Arn
+  StateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub
+        - /aws/vendedlogs/states/${AWS::StackName}-${ResourceId}-Logs
+        - ResourceId: StateMachine
+  ScheduleToStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: !Sub scheduler.${AWS::URLSuffix}
+          Action: sts:AssumeRole
+          Condition:
+            ArnLike:
+              aws:SourceArn: !Sub
+                - arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/*/${AWS::StackName}-${ResourceId}-*
+                - ResourceId: Schedule
+      Policies:
+        - PolicyName: StartExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref StateMachine
+  calculateStats:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: calculateStats
+      CodeUri: src/lambdas/get-stats
+      Handler: index.handler
+      Runtime: nodejs18.x
+      MemorySize: 3008
+      Timeout: 30
+      Tracing: Active
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Toys
+          TABLE_ARN: !GetAtt Toys.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Toys
+  calculateStatsLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${calculateStats}
+Metadata:
+  AWS::Composer::Groups:
+    Group2:
+      Label: RecieveLetters
+      Members:
+        - LettresAuPereNoel
+        - readLetter
+        - LettersQueue
+        - lettres
+        - DLQ
+    Group:
+      Label: BuildersElves
+      Members:
+        - Toys
+        - MakeToys
+    Group3:
+      Label: QualityELves
+      Members:
+        - qualityControl
+        - ToysRejected
+        - ToysRejectedDlq
+        - RemakeToy
+    Group4:
+      Label: ParentsVote
+      Members:
+        - Api
+        - ParentUserPoolClient
+        - KidsStatus
+        - saveParentsVote
+        - kidsStatus
+        - UserPoolClient
+        - KidsStatusDLQ
+    Group5:
+      Label: SantaReports
+      Members:
+        - StateMachine
+        - Schedule
+        - calculateStats
