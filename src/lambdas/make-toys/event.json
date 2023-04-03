@@ -1,0 +1,71 @@
+{
+  "Records": [
+      {
+          "eventID": "96176e4e0f9bdf364d1ecd6d0b3ec546",
+          "eventName": "MODIFY",
+          "eventVersion": "1.1",
+          "eventSource": "aws:dynamodb",
+          "awsRegion": "eu-west-1",
+          "dynamodb": {
+              "ApproximateCreationDateTime": 1680428286,
+              "Keys": {
+                  "id": {
+                      "N": "46609"
+                  }
+              },
+              "NewImage": {
+                  "country": {
+                      "S": "Niue"
+                  },
+                  "toys": {
+                      "L": [
+                          {
+                              "S": "Magic Kit"
+                          },
+                          {
+                              "S": "Ribbon Streamer"
+                          },
+                          {
+                              "S": "Skateboard"
+                          }
+                      ]
+                  },
+                  "from": {
+                      "S": "Esta"
+                  },
+                  "id": {
+                      "N": "46609"
+                  }
+              },
+              "OldImage": {
+                  "country": {
+                      "S": "Azerbaijan"
+                  },
+                  "toys": {
+                      "L": [
+                          {
+                              "S": "Tennis racket"
+                          },
+                          {
+                              "S": "Walkie Talkies"
+                          },
+                          {
+                              "S": "Trampoline"
+                          }
+                      ]
+                  },
+                  "from": {
+                      "S": "Dedie"
+                  },
+                  "id": {
+                      "N": "46609"
+                  }
+              },
+              "SequenceNumber": "4139500000000007586792291",
+              "SizeBytes": 154,
+              "StreamViewType": "NEW_AND_OLD_IMAGES"
+          },
+          "eventSourceARN": "arn:aws:dynamodb:eu-west-1:380409447933:table/serverless-santa-LettresAuPereNoel-CXOO68MFAHIQ/stream/2023-04-02T09:19:33.909"
+      }
+  ]
+}

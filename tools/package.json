@@ -1,0 +1,21 @@
+{
+  "name": "lettres-au-pere-noel",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "init": "node index.js init",
+    "reset": "node index.js reset"
+  },
+  "type": "module",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.303.0",
+    "@aws-sdk/client-s3": "^3.303.0",
+    "@aws-sdk/util-dynamodb": "^3.303.0",
+    "prompts": "^2.4.2",
+    "unique-names-generator": "^4.7.1"
+  }
+}

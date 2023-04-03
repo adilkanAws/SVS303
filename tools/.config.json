@@ -1,0 +1,6 @@
+{
+  "lettersBucketName": "serverless-santa-lettres-380409447933",
+  "lettersTable": "serverless-santa-LettresAuPereNoel-1QIYYAYNTJLK1",
+  "numberOfLetters": 10000,
+  "toysTable": "serverless-santa-Toys-PTFMEEY4A7S0"
+}

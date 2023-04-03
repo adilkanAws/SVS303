@@ -1,0 +1,38 @@
+{
+  "Records": [
+    {
+      "eventVersion": "2.1",
+      "eventSource": "aws:s3",
+      "awsRegion": "eu-west-1",
+      "eventTime": "2023-03-31T09:30:55.226Z",
+      "eventName": "ObjectCreated:Put",
+      "userIdentity": {
+        "principalId": "AWS:AROAVRERLQX6YXF35Y2I3:adilkan-Isengard"
+      },
+      "requestParameters": {
+        "sourceIPAddress": "91.173.252.37"
+      },
+      "responseElements": {
+        "x-amz-request-id": "CB6NHVJ48VEBXZJC",
+        "x-amz-id-2": "ykciIcHrPVSKYCflAt90OleUyGGUM6ivXhT7OWEW72j4u9UVeJbbTPnutjTxCLZGJjPHCSrPefvSHcn4MhVScL13g5hCVMJ4"
+      },
+      "s3": {
+        "s3SchemaVersion": "1.0",
+        "configurationId": "2b851129-c562-4452-aed0-3fe56341619b",
+        "bucket": {
+          "name": "serverless-santa-lettresau-380409447933",
+          "ownerIdentity": {
+            "principalId": "A3JTDEQWEDCJX2"
+          },
+          "arn": "arn:aws:s3:::serverless-santa-lettresau-380409447933"
+        },
+        "object": {
+          "key": "letter_0",
+          "size": 79,
+          "eTag": "63b91c7f04d9d7335cd7ae1c3b3b175b",
+          "sequencer": "006426A84F26A85500"
+        }
+      }
+    }
+  ]
+}
